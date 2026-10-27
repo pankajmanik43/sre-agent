@@ -35,30 +35,8 @@ export ANTHROPIC_API_KEY=<your-key>  # Windows PowerShell: $env:ANTHROPIC_API_KE
 
 ### Read-only RBAC (recommended)
 
-```yaml
-apiVersion: rbac.authorization.k8s.io/v1
-kind: ClusterRole
-metadata:
-  name: sre-agent-readonly
-rules:
-  - apiGroups: [""]
-    resources: [pods, pods/log, events, services, endpoints, nodes, persistentvolumeclaims]
-    verbs: [get, list, watch]
-  - apiGroups: [apps]
-    resources: [deployments, replicasets, statefulsets, daemonsets]
-    verbs: [get, list, watch]
-  - apiGroups: [batch]
-    resources: [jobs, cronjobs]
-    verbs: [get, list, watch]
-  - apiGroups: [networking.k8s.io]
-    resources: [ingresses]
-    verbs: [get, list, watch]
-  - apiGroups: [autoscaling]
-    resources: [horizontalpodautoscalers]
-    verbs: [get, list, watch]
-  - apiGroups: [metrics.k8s.io]
-    resources: [pods, nodes]
-    verbs: [get, list]
+```bash
+kubectl apply -f deploy/rbac-readonly.yaml
 ```
 
 Bind it to a ServiceAccount and build a kubeconfig context for that account. Then pass the context with
@@ -92,6 +70,20 @@ The assessment JSON goes to stdout and errors go to stderr. Exit codes:
 The agent calls the Claude API with adaptive thinking. No refusal fallback is configured. If the
 API declines a request (`stop_reason="refusal"`), the run stops with exit code 1 and an error
 giving the refusal category and explanation.
+
+## Sample output
+
+- [examples/output_pod_crashloop.json](examples/output_pod_crashloop.json): admin context run against
+  the crashlooping `checkout-api` pod.
+- [examples/output_pod_crashloop_ro.json](examples/output_pod_crashloop_ro.json): read-only
+  service-account run, showing the RBAC allowlist holds (reads outside it, such as endpoints, are
+  Forbidden).
+
+## Known limitation
+
+Hypothesis ranking is non-deterministic across runs. The two sample runs above, on the same cluster,
+agree on the top cause but rank the second and third causes in opposite order. An eval harness is the
+planned fix.
 
 ## Running the real-cluster test
 
