@@ -4,7 +4,7 @@ metadata:
   name: sre-agent-readonly
 rules:
 - apiGroups: [""]
-  resources: ["pods", "pods/log", "events", "nodes", "services", "configmaps", "namespaces"]
+  resources: ["pods", "pods/log", "events", "nodes", "services"]
   verbs: ["get", "list", "watch"]
 - apiGroups: ["apps"]
   resources: ["deployments", "replicasets", "statefulsets", "daemonsets"]

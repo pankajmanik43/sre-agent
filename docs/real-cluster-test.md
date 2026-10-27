@@ -11,3 +11,19 @@ Rules: only run kind, kubectl, docker, and sre-agent commands without asking. As
 7. Do NOT delete the cluster or the ro context. Finish with a short summary: did both runs succeed, how many tool calls each, any difference between admin and ro runs.
 
 Before starting, save these steps verbatim to docs/real-cluster-test.md so they're in the repo next time.
+
+## Verified
+
+2026-10-27, `ro` context on kind cluster `sre-agent`, namespace `payments`:
+
+| Check | Result |
+|---|---|
+| `kubectl --context ro auth can-i delete pods -n payments` | no |
+| `kubectl --context ro auth can-i get pods -n payments` | yes |
+| `kubectl --context ro auth can-i list endpoints -n payments` | no |
+| `kubectl --context ro auth can-i get configmaps -n payments` | yes |
+| `kubectl --context ro auth can-i get secrets -n payments` | no |
+
+These were run against the earlier manifest, which granted `configmaps` and `namespaces`. Both were
+then removed from `deploy/rbac-readonly.yaml`; re-apply it and re-run the checks to confirm
+`get configmaps` now returns no.
