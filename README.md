@@ -93,6 +93,30 @@ The agent calls the Claude API with adaptive thinking. No refusal fallback is co
 API declines a request (`stop_reason="refusal"`), the run stops with exit code 1 and an error
 giving the refusal category and explanation.
 
+## Running the real-cluster test
+
+[docs/real-cluster-test.md](docs/real-cluster-test.md) walks through an end-to-end run against a local
+kind cluster with a crashlooping pod: one run with the admin context, then one with the read-only RBAC
+context above.
+
+Windows gotchas:
+
+- **Antivirus HTTPS scanning breaks kubectl to kind.** AVG (and similar products) intercept TLS on
+  `127.0.0.1` and re-sign it, so kubectl fails with `x509: certificate signed by unknown authority`.
+  Exclude `127.0.0.1` from HTTPS scanning, then restart the terminal that runs kubectl and sre-agent.
+- **Keep the API key in `.env`, not a global environment variable.** `.env` is git-ignored. The CLI
+  doesn't read it automatically, so load it only for the sre-agent command:
+
+  ```bash
+  (set -a; . ./.env; sre-agent examples/incident_pod_crashloop.json --context kind-sre-agent)
+  ```
+
+  ```powershell
+  & { Get-Content .env | ForEach-Object { $k, $v = $_ -split '=', 2; Set-Item "env:$k" $v }
+      .venv\Scripts\sre-agent.exe examples/incident_pod_crashloop.json --context kind-sre-agent }
+  Remove-Item env:ANTHROPIC_API_KEY
+  ```
+
 ## Development
 
 ```bash
