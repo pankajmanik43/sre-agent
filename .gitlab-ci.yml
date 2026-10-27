@@ -1,0 +1,65 @@
+stages:
+  - lint
+  - test
+  - security
+
+default:
+  image: python:3.12-slim
+
+variables:
+  PIP_CACHE_DIR: "$CI_PROJECT_DIR/.cache/pip"
+  PIP_DISABLE_PIP_VERSION_CHECK: "1"
+
+cache:
+  key: pip-$CI_COMMIT_REF_SLUG
+  paths:
+    - .cache/pip
+
+ruff:
+  stage: lint
+  script:
+    - pip install "ruff==0.17.3"
+    - ruff check .
+    - ruff format --check .
+
+pytest:
+  stage: test
+  script:
+    - pip install -e ".[dev]"
+    - pytest --junitxml=report.xml --cov=agent --cov-report=term --cov-report=xml:coverage.xml
+    # Trivy can't resolve dependencies from a bare pyproject.toml, so hand it the
+    # exact set installed here.
+    - pip freeze --exclude-editable > requirements-frozen.txt
+  coverage: '/^TOTAL.*\s+(\d+(?:\.\d+)?%)$/'
+  artifacts:
+    when: always
+    paths:
+      - requirements-frozen.txt
+    reports:
+      junit: report.xml
+      coverage_report:
+        coverage_format: cobertura
+        path: coverage.xml
+
+trivy:
+  stage: security
+  needs: [pytest]
+  image:
+    # Pin a reviewed release (ideally by digest) and bump it deliberately.
+    name: aquasec/trivy:0.58.1
+    entrypoint: [""]
+  variables:
+    TRIVY_CACHE_DIR: "$CI_PROJECT_DIR/.trivycache"
+    TRIVY_NO_PROGRESS: "true"
+    TRIVY_SKIP_DIRS: ".cache,.trivycache"
+  cache:
+    key: trivy
+    paths:
+      - .trivycache
+  script:
+    - trivy fs --scanners vuln,secret,misconfig --format json --output trivy-report.json .
+    - trivy fs --scanners vuln,secret,misconfig --severity HIGH,CRITICAL --ignore-unfixed --exit-code 1 .
+  artifacts:
+    when: always
+    paths:
+      - trivy-report.json
