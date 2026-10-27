@@ -52,7 +52,7 @@ class IncidentAssessment(_Strict):
     verified_facts: list[str] = Field(description="Facts directly observed in tool output.")
     assumptions: list[str] = Field(description="Things taken as true without verification.")
     hypotheses: list[Hypothesis] = Field(
-        description="Ranked most likely first; confidence must not increase down the list."
+        description="Ranked most likely first. Re-sorted by descending confidence on validation."
     )
     safe_next_actions: list[str] = Field(
         description="Low-risk actions an operator can take next, most important first."
@@ -62,8 +62,7 @@ class IncidentAssessment(_Strict):
     )
 
     @model_validator(mode="after")
-    def _hypotheses_ranked(self) -> IncidentAssessment:
-        confidences = [h.confidence for h in self.hypotheses]
-        if confidences != sorted(confidences, reverse=True):
-            raise ValueError("hypotheses must be ordered by descending confidence")
+    def _rank_hypotheses(self) -> IncidentAssessment:
+        # Stable sort: hypotheses with equal confidence keep the model's order.
+        self.hypotheses = sorted(self.hypotheses, key=lambda h: h.confidence, reverse=True)
         return self

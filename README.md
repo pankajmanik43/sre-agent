@@ -89,9 +89,9 @@ The assessment JSON goes to stdout and errors go to stderr. Exit codes:
 | 1 | Agent or API failure |
 | 2 | Bad input |
 
-The agent calls the Claude API with adaptive thinking and server-side refusal fallback
-(`fallbacks="default"`). If a safety classifier declines a request, it's retried on Anthropic's
-recommended fallback model rather than aborting the investigation.
+The agent calls the Claude API with adaptive thinking. No refusal fallback is configured. If the
+API declines a request (`stop_reason="refusal"`), the run stops with exit code 1 and an error
+giving the refusal category and explanation.
 
 ## Development
 
@@ -123,5 +123,15 @@ A test fails if `TOOL_SPECS` and the registered handlers fall out of sync.
 | test | `pytest` | Tests with JUnit and Cobertura coverage reports; freezes installed deps for Trivy |
 | security | `trivy` | `trivy fs` vuln + secret + misconfig scan; fails on fixable HIGH/CRITICAL; JSON report artifact |
 
-The Trivy image is pinned to a fixed tag. Pin it by digest and update it deliberately rather than
-tracking `latest`.
+The Trivy image is pinned by tag and digest (`aquasec/trivy:0.76.1@sha256:…`). To upgrade, look
+up the new tag's digest on Docker Hub and replace both.
+
+### Testing on Python 3.12
+
+CI runs on 3.12. To run the suite on a local 3.12 interpreter, use this script. It needs
+[uv](https://docs.astral.sh/uv/) and runs pytest in a throwaway environment. If uv or Python 3.12
+isn't installed, it prints `SKIP` and exits 0. It never downloads an interpreter:
+
+```bash
+python scripts/test_py312.py
+```

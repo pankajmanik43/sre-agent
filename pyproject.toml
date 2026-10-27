@@ -7,6 +7,8 @@ name = "sre-agent"
 version = "0.1.0"
 description = "Read-only Kubernetes incident triage agent powered by Claude."
 readme = "README.md"
+license = "MIT"
+license-files = ["LICENSE"]
 requires-python = ">=3.12"
 dependencies = [
     "anthropic>=2.3,<3",

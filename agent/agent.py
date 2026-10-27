@@ -14,9 +14,6 @@ from agent.tools import TOOL_SPECS, ToolContext, run_tool
 DEFAULT_MODEL = "claude-opus-5-5"
 DEFAULT_EFFORT = "high"
 SUBMIT_TOOL = "submit_assessment"
-# Re-runs a request on Anthropic's recommended fallback model if a safety classifier
-# declines it, instead of failing the investigation.
-FALLBACK_BETA = "server-side-fallback-2026-07-01"
 
 SUBMIT_SPEC: dict[str, Any] = {
     "name": SUBMIT_TOOL,
@@ -65,7 +62,7 @@ def run_agent(
     retries_left = max_validation_retries
 
     for _ in range(max_turns):
-        response = client.beta.messages.create(
+        response = client.messages.create(
             model=model,
             max_tokens=16000,
             system=SYSTEM_PROMPT,
@@ -73,13 +70,11 @@ def run_agent(
             messages=messages,
             thinking={"type": "adaptive"},
             output_config={"effort": effort},
-            betas=[FALLBACK_BETA],
-            fallbacks="default",
         )
         if response.stop_reason == "refusal":
-            raise AgentError("the model declined the request (stop_reason=refusal)")
-        if response.stop_reason == "max_tokens":
-            raise AgentError("response hit max_tokens before finishing")
+            raise AgentError(f"the model declined the request: {_refusal_reason(response)}")
+        if response.stop_reason in ("max_tokens", "model_context_window_exceeded"):
+            raise AgentError(f"response stopped early (stop_reason={response.stop_reason})")
 
         messages.append({"role": "assistant", "content": response.content})
         tool_uses = [block for block in response.content if block.type == "tool_use"]
@@ -111,6 +106,16 @@ def run_agent(
         messages.append({"role": "user", "content": results})
 
     raise AgentError(f"no valid assessment after {max_turns} turns")
+
+
+def _refusal_reason(response: anthropic.types.Message) -> str:
+    details = response.stop_details
+    if details is None:
+        return "no details provided"
+    category = details.category or "unspecified"
+    if details.explanation:
+        return f"category={category}: {details.explanation}"
+    return f"category={category}"
 
 
 def _tool_result(tool_use_id: str, content: str, is_error: bool) -> dict[str, Any]:

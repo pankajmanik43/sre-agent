@@ -3,7 +3,7 @@ from __future__ import annotations
 from typing import Any
 
 import pytest
-from anthropic.types.beta import BetaMessage, BetaTextBlock, BetaToolUseBlock
+from anthropic.types import Message, RefusalStopDetails, TextBlock, ToolUseBlock
 
 from agent.kubectl import KubectlError, KubectlRunner
 from agent.tools import ToolContext
@@ -27,11 +27,11 @@ class FakeKubectl(KubectlRunner):
 
 
 class _FakeMessages:
-    def __init__(self, responses: list[BetaMessage]) -> None:
+    def __init__(self, responses: list[Message]) -> None:
         self._responses = list(responses)
         self.calls: list[dict[str, Any]] = []
 
-    def create(self, **kwargs: Any) -> BetaMessage:
+    def create(self, **kwargs: Any) -> Message:
         # Snapshot messages: the agent keeps appending to the same list.
         self.calls.append({**kwargs, "messages": list(kwargs["messages"])})
         if not self._responses:
@@ -40,25 +40,26 @@ class _FakeMessages:
 
 
 class FakeAnthropic:
-    """Stand-in for anthropic.Anthropic exposing only client.beta.messages.create."""
+    """Stand-in for anthropic.Anthropic exposing only client.messages.create."""
 
-    def __init__(self, responses: list[BetaMessage]) -> None:
-        self.beta = type("Beta", (), {})()
-        self.beta.messages = _FakeMessages(responses)
-
-
-def tool_use(name: str, tool_input: dict[str, Any], block_id: str) -> BetaToolUseBlock:
-    return BetaToolUseBlock.model_construct(
-        type="tool_use", id=block_id, name=name, input=tool_input
-    )
+    def __init__(self, responses: list[Message]) -> None:
+        self.messages = _FakeMessages(responses)
 
 
-def text(value: str) -> BetaTextBlock:
-    return BetaTextBlock.model_construct(type="text", text=value, citations=None)
+def tool_use(name: str, tool_input: dict[str, Any], block_id: str) -> ToolUseBlock:
+    return ToolUseBlock.model_construct(type="tool_use", id=block_id, name=name, input=tool_input)
 
 
-def message(*content: Any, stop_reason: str = "tool_use") -> BetaMessage:
-    return BetaMessage.model_construct(
+def text(value: str) -> TextBlock:
+    return TextBlock.model_construct(type="text", text=value, citations=None)
+
+
+def message(
+    *content: Any,
+    stop_reason: str = "tool_use",
+    stop_details: RefusalStopDetails | None = None,
+) -> Message:
+    return Message.model_construct(
         id="msg_test",
         type="message",
         role="assistant",
@@ -66,6 +67,7 @@ def message(*content: Any, stop_reason: str = "tool_use") -> BetaMessage:
         content=list(content),
         stop_reason=stop_reason,
         stop_sequence=None,
+        stop_details=stop_details,
     )
 
 

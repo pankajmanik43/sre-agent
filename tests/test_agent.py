@@ -4,8 +4,9 @@ import json
 import anthropic
 import httpx2
 import pytest
+from anthropic.types import RefusalStopDetails
 
-from agent.agent import FALLBACK_BETA, SUBMIT_TOOL, AgentError, run_agent
+from agent.agent import SUBMIT_TOOL, AgentError, run_agent
 from agent.schemas import IncidentAssessment
 from tests.conftest import VALID_ASSESSMENT, FakeAnthropic, message, text, tool_use
 
@@ -41,7 +42,7 @@ def test_investigates_then_returns_validated_assessment(ctx, fake_kubectl):
     assert result.severity == "SEV2"
     assert [argv[1] for argv in fake_kubectl.calls] == ["get", "get", "logs"]
 
-    calls = client.beta.messages.calls
+    calls = client.messages.calls
     assert len(calls) == 3
     # Parallel tool results go back together in one user message, in order.
     second_turn_results = calls[1]["messages"][-1]
@@ -54,13 +55,12 @@ def test_request_shape(ctx):
     client = FakeAnthropic([message(tool_use(SUBMIT_TOOL, VALID_ASSESSMENT, "t1"))])
     run_agent("x", client=client, ctx=ctx, effort="medium")
 
-    call = client.beta.messages.calls[0]
+    call = client.messages.calls[0]
     assert call["model"] == "claude-opus-5-5"
     assert call["thinking"] == {"type": "adaptive"}
     assert call["output_config"] == {"effort": "medium"}
-    assert call["fallbacks"] == "default"
-    assert call["betas"] == [FALLBACK_BETA]
-    assert "tool_choice" not in call
+    for absent in ("fallbacks", "betas", "tool_choice"):
+        assert absent not in call
     tool_names = [t["name"] for t in call["tools"]]
     assert SUBMIT_TOOL in tool_names
     assert "get_pods" in tool_names
@@ -75,7 +75,7 @@ def test_tool_errors_are_returned_to_model(ctx, fake_kubectl):
     )
     run_agent("x", client=client, ctx=ctx)
 
-    result = client.beta.messages.calls[1]["messages"][-1]["content"][0]
+    result = client.messages.calls[1]["messages"][-1]["content"][0]
     assert result["is_error"] is True
     assert "unknown tool" in result["content"]
     assert fake_kubectl.calls == []
@@ -91,7 +91,7 @@ def test_invalid_assessment_gets_one_retry(ctx):
     result = run_agent("x", client=client, ctx=ctx)
 
     assert result.severity == "SEV2"
-    feedback = client.beta.messages.calls[1]["messages"][-1]["content"][0]
+    feedback = client.messages.calls[1]["messages"][-1]["content"][0]
     assert feedback["is_error"] is True
     assert "severity" in feedback["content"]
 
@@ -115,7 +115,7 @@ def test_text_only_reply_is_nudged_to_submit(ctx):
         ]
     )
     run_agent("x", client=client, ctx=ctx)
-    nudge = client.beta.messages.calls[1]["messages"][-1]
+    nudge = client.messages.calls[1]["messages"][-1]
     assert nudge == {"role": "user", "content": f"Call {SUBMIT_TOOL} with your final assessment."}
 
 
@@ -125,12 +125,33 @@ def test_max_turns_enforced(ctx):
         run_agent("x", client=client, ctx=ctx, max_turns=3)
 
 
-@pytest.mark.parametrize(
-    ("stop_reason", "match"), [("refusal", "declined"), ("max_tokens", "max_tokens")]
-)
-def test_bad_stop_reasons_raise(ctx, stop_reason, match):
+@pytest.mark.parametrize("stop_reason", ["max_tokens", "model_context_window_exceeded"])
+def test_truncated_responses_raise(ctx, stop_reason):
     client = FakeAnthropic([message(stop_reason=stop_reason)])
-    with pytest.raises(AgentError, match=match):
+    with pytest.raises(AgentError, match=f"stop_reason={stop_reason}"):
+        run_agent("x", client=client, ctx=ctx)
+
+
+def test_refusal_raises_with_reason_and_is_not_retried(ctx):
+    details = RefusalStopDetails.model_construct(
+        type="refusal", category="cyber", explanation="Request looks like exploit development."
+    )
+    client = FakeAnthropic(
+        [
+            message(stop_reason="refusal", stop_details=details),
+            message(tool_use(SUBMIT_TOOL, VALID_ASSESSMENT, "t1")),
+        ]
+    )
+    with pytest.raises(
+        AgentError, match="declined.*category=cyber: Request looks like exploit development"
+    ):
+        run_agent("x", client=client, ctx=ctx)
+    assert len(client.messages.calls) == 1
+
+
+def test_refusal_without_details(ctx):
+    client = FakeAnthropic([message(stop_reason="refusal")])
+    with pytest.raises(AgentError, match="declined the request: no details provided"):
         run_agent("x", client=client, ctx=ctx)
 
 
@@ -165,10 +186,12 @@ def test_real_sdk_client_serializes_request(ctx):
     result = run_agent("x", client=client, ctx=ctx)
 
     assert result.severity == "SEV2"
-    assert FALLBACK_BETA in requests[0].headers["anthropic-beta"]
+    assert all(r.url.path == "/v1/messages" for r in requests)
+    assert "anthropic-beta" not in requests[0].headers
     body = json.loads(requests[1].content)
-    assert body["fallbacks"] == "default"
+    assert "fallbacks" not in body
     assert body["thinking"] == {"type": "adaptive"}
+    assert body["output_config"] == {"effort": "high"}
     # The assistant turn (SDK objects) is replayed, followed by the tool result.
     assert body["messages"][1]["content"][0]["id"] == "t1"
     assert body["messages"][2]["content"][0]["tool_use_id"] == "t1"

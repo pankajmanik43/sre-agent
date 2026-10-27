@@ -50,11 +50,27 @@ def test_confidence_bounded(confidence):
         IncidentAssessment.model_validate(data)
 
 
-def test_hypotheses_must_be_ranked():
+def test_hypotheses_sorted_by_descending_confidence():
     data = _assessment()
     data["hypotheses"].reverse()
-    with pytest.raises(ValidationError, match="descending confidence"):
-        IncidentAssessment.model_validate(data)
+    assert [h["confidence"] for h in data["hypotheses"]] == [0.1, 0.8]
+
+    assessment = IncidentAssessment.model_validate(data)
+
+    assert [h.confidence for h in assessment.hypotheses] == [0.8, 0.1]
+    assert assessment.hypotheses[0].cause == "Missing DATABASE_URL environment variable"
+
+
+def test_hypothesis_sort_is_stable_for_ties():
+    data = _assessment()
+    base = data["hypotheses"][0]
+    data["hypotheses"] = [
+        {**base, "cause": "low", "confidence": 0.2},
+        {**base, "cause": "tie-first", "confidence": 0.5},
+        {**base, "cause": "tie-second", "confidence": 0.5},
+    ]
+    causes = [h.cause for h in IncidentAssessment.model_validate(data).hypotheses]
+    assert causes == ["tie-first", "tie-second", "low"]
 
 
 @pytest.mark.parametrize(
