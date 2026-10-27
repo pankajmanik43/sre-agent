@@ -181,7 +181,7 @@ def test_real_sdk_client_serializes_request(ctx):
         )
 
     client = anthropic.Anthropic(
-        api_key="test-key", http_client=httpx2.Client(transport=httpx2.MockTransport(handler))
+        api_key="unused", http_client=httpx2.Client(transport=httpx2.MockTransport(handler))
     )
     result = run_agent("x", client=client, ctx=ctx)
 

@@ -30,7 +30,7 @@ Requires Python 3.12+ and `kubectl` on `PATH`.
 python -m venv .venv
 source .venv/bin/activate            # Windows: .venv\Scripts\activate
 pip install -e ".[dev]"
-export ANTHROPIC_API_KEY=sk-ant-...  # Windows PowerShell: $env:ANTHROPIC_API_KEY = "sk-ant-..."
+export ANTHROPIC_API_KEY=<your-key>  # Windows PowerShell: $env:ANTHROPIC_API_KEY = "<your-key>"
 ```
 
 ### Read-only RBAC (recommended)
